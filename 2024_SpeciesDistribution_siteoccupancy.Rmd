@@ -12,6 +12,8 @@ library(geodata)
 ## library(rgdal) # retired in 2023. move to sf/stars/terra with GDAL and PROJ
 # library(maptools) # retired in 2023; same for rgeos; no longer active maintainer
 
+library(terra)
+library(maps)
 library(sf)
 library(devtools)
 devtools::install_github("rsbivand/sp@evolution")
@@ -19,7 +21,8 @@ Sys.setenv("_SP_EVOLUTION_STATUS_"=2)  ## so that sp will call sf::st_crs() to v
 
 library(prism)
 library(ggplot2)
-library(distributional)
+library(usmap)
+library(tidyterra)
 
 ```
 
@@ -60,17 +63,72 @@ Variable	Description	Unit
     vapr	vapor pressure	kPa   
 
 
+They aren't in the same projection
 ```{r}
 
 # bioclim_data <- raster::getData("worldclim", var = 'bio', res = 0.5, lon = 105, lat = 40)
 bioclim_data <- geodata::worldclim_tile('bio', res = 0.5, lon = 105, lat = 40, path=tempdir())
+gadm_data <- geodata::gadm(country = "USA",  path=tempdir(), level = 2)
 
-bioclim_data
+plot(bioclim_data[[1]])
+plot(gadm_data, add = TRUE, col = "blue", legend = FALSE)
 
-plot(bioclim_data)
 
-gadm_data <- raster::getData("GADM", country = "USA", level = 2)
+state <- map_data("state")
+ggplot(data = state, aes(x = long, y = lat, fill = region, group = group))+
+  geom_polygon(color = "white")+ 
+  guides(fill=FALSE) + 
+  theme(axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank(),
+        axis.title.y=element_blank(), axis.text.y=element_blank(), axis.ticks.y=element_blank()) + 
+  ggtitle('U.S. Map with States') + 
+  coord_fixed(1.3)
 
+CO_NM <- subset(state, region %in% c("colorado","new mexico"))
+counties <- map_data("county")
+CONM_counties <- subset(counties, region %in% c("colorado","new mexico"))
+
+ggplot(data=CO_NM, mapping=aes(x=long, y=lat, group=group)) + 
+  coord_fixed(1.3) + 
+  geom_polygon(color="black", fill="gray") + 
+  geom_polygon(data=CONM_counties, fill=NA, color="white") + 
+  geom_polygon(color="black", fill=NA) + 
+  ggtitle('Colorado and New Mexico Map with Counties') + 
+  theme(axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank(),
+        axis.title.y=element_blank(), axis.text.y=element_blank(), axis.ticks.y=element_blank())
+
+# overlay a SpatVector
+ggplot()+
+  geom_spatraster(data = bioclim_data[[1]]) +
+  # facet_wrap(~lyr, ncol = 2)  +
+  scale_fill_whitebox_c(
+    palette = "muted",
+    labels = scales::label_number(suffix = "º"),
+    n.breaks = 12,
+    guide = guide_legend(reverse = TRUE)
+  ) +
+  labs(
+    fill = "",
+    title = "Annual Mean Temperature ",
+    subtitle = "Colorado"
+  ) +
+  geom_sf(data = gadm_data, fill = "white")
+
+terra::crs(gadm_data, describe = TRUE) ## EPSG 4326
+terra::crs(bioclim_data, describe = TRUE) ## EPSG 4326, -180, 180, 90, -90
+
+```
+
+
+Download GBIF records   
+    
+    Includes 'research grade' iNat observations
+```{r}
+phal <- sp_occurrence("Physaria", "alpina*", download = TRUE)
+
+head(phal)
+
+ggplot(bioclim_data[[1]])+
+  geom_raster()
 
 ```
 
