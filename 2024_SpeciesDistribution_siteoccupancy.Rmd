@@ -9,6 +9,7 @@ output: html_document
 
 library(raster) ## says getData will be removed, use geodata instead
 library(geodata)
+library(dismo)
 ## library(rgdal) # retired in 2023. move to sf/stars/terra with GDAL and PROJ
 # library(maptools) # retired in 2023; same for rgeos; no longer active maintainer
 
@@ -63,16 +64,12 @@ Variable	Description	Unit
     vapr	vapor pressure	kPa   
 
 
-They aren't in the same projection
+Not same extent, not sure if correct once changed with terra::ext
 ```{r}
 
 # bioclim_data <- raster::getData("worldclim", var = 'bio', res = 0.5, lon = 105, lat = 40)
 bioclim_data <- geodata::worldclim_tile('bio', res = 0.5, lon = 105, lat = 40, path=tempdir())
 gadm_data <- geodata::gadm(country = "USA",  path=tempdir(), level = 2)
-
-plot(bioclim_data[[1]])
-plot(gadm_data, add = TRUE, col = "blue", legend = FALSE)
-
 
 state <- map_data("state")
 ggplot(data = state, aes(x = long, y = lat, fill = region, group = group))+
@@ -127,8 +124,41 @@ phal <- sp_occurrence("Physaria", "alpina*", download = TRUE)
 
 head(phal)
 
-ggplot(bioclim_data[[1]])+
-  geom_raster()
+## create a SpatialPointsDataFrame from the data.frame
+coordinates(phal) <- ~ lon + lat
+crs(phal) <- "+proj=longlat"
+conm <- gadm_data[gadm_data$NAME_1 %in% c("Colorado","New Mexico")]
+ext(conm)
+ext(phal) # -107, 10 38 63
+ext(bioclim_data) ## 90 120 30 60
+
+bioclim_data_ext <- bioclim_data
+ext(bioclim_data_ext) <- ext(conm) 
+
+bioclim_crop <- crop(bioclim_data, conm, ext = TRUE)
+#### 
+plot(gadm_data[gadm_data$NAME_1 %in% c("Colorado","New Mexico")],
+     main = "Physaria alpina iNat and herbarium")
+points(phal, pch = 16, col = "red")
+
+
+### bioclim seems to be 0 - 360 while gadm and GBIF are -180 - 180
+plot(bioclim_data_ext[[1]])
+plot(gadm_data, add = TRUE)
+points(phal, pch = 16, col = "blue")
+
+
+
+ggplot() +
+  geom_spatraster(data = bioclim_data[[1]]) +
+  # facet_wrap(~lyr, ncol = 2)  +
+  scale_fill_whitebox_c(
+    palette = "muted",
+    labels = scales::label_number(suffix = "º"),
+    n.breaks = 12,
+    guide = guide_legend(reverse = TRUE)
+  ) +
+  geom_point(data = phal, aes(x= lat, y=lon))
 
 ```
 
