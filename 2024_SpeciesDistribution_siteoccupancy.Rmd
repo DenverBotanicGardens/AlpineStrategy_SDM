@@ -35,6 +35,13 @@ library(tidyverse)
 
 library(dplyr)
 library(tidyr)
+
+
+## JAGS models
+library(R2jags)
+library(runjags)
+library(mcmcplots)
+library(boot)
 ```
 
 
@@ -164,38 +171,28 @@ bioclimdata <- terra::extract(bioclim_data, terra::vect(grid_subset), fun = mean
 ## Extract cell numbers for each specimen record
 gridnum <- sf::st_intersection(grid_subset, st_as_sf(phal.clean, coords = c("lat","lon")))
 ## Build this for a list of alpine species to determine true '0's when someone made an observation in the area but didn't make a target species observation compared to no effort where no observations made in that cell in that year. 
-table(gridnum$cellnum, gridnum$year)
+mrc <- table(gridnum$cellnum, gridnum$year)
+
+## Need to add zeros when other species were found but not PhAl
+mrc[mrc > 0] <- 1
+
 
 bioclim_data_ext <- bioclim_data
 ext(bioclim_data_ext) <- ext(conm) 
 
-## State maps with points
-ggplot(data=CO_NM, mapping=aes(x=long, y=lat, group=group)) + 
-  coord_fixed(1.3) + 
-  geom_polygon(color="black", fill="gray") + 
-  geom_polygon(data=CONM_counties, fill=NA, color="white") + 
-  geom_polygon(color="black", fill=NA) + 
-  ggtitle('Colorado and New Mexico Map with Counties') + 
-  theme(axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank(),
-        axis.title.y=element_blank(), axis.text.y=element_blank(), axis.ticks.y=element_blank())+
-  geom_point(data = phal, aes(x= lon, y = lat))
-
 
 bioclim_crop <- crop(bioclim_data, conm, ext = TRUE)
 #### 
-plot(gadm_data[gadm_data$NAME_1 %in% c("Colorado","New Mexico")],
-     main = "Physaria alpina iNat and herbarium")
-points(phal, pch = 16, col = "red")
-
-
-### bioclim seems to be 0 - 360 while gadm and GBIF are -180 - 180
-plot(bioclim_data_ext[[1]])
+plot(bioclim_crop[[4]], main = "Physaria alpina iNat and herbarium")
 plot(gadm_data, add = TRUE)
-points(phal, pch = 16, col = "blue")
+# plot(gadm_data[gadm_data$NAME_1 %in% c("Colorado","New Mexico")],
+#      main = "Physaria alpina iNat and herbarium")
+points(phal.clean, pch = 16, col = "red")
+
 
 # overlay a SpatVector
 ggplot()+
-  geom_spatraster(data = bioclim_data_ext[[1]]) +
+  geom_spatraster(data = bioclim_crop[[1]]) +
   # facet_wrap(~lyr, ncol = 2)  +
   scale_fill_whitebox_c(
     palette = "muted",
@@ -203,20 +200,16 @@ ggplot()+
     n.breaks = 12,
     guide = guide_legend(reverse = TRUE)
   ) +
-  geom_spatvector(data = gadm_data)
+  geom_spatvector(data = gadm_data[gadm_data$NAME_1 %in% c("Colorado")], aes(fill = NAME_1, alpha = 0.5))
 
-ggplot(conm)+
-  geom_spatvector(aes(fill = NAME_2), alpha = 0.5) +
-  scale_fill_discrete(guide = "none")+
-  geom_sf(data = phal, show.legend = "point")
-  
 
 terra::crs(gadm_data, describe = TRUE) ## EPSG 4326
 terra::crs(bioclim_data, describe = TRUE) ## EPSG 4326, -180, 180, 90, -90
 
 
 ggplot() +
-  geom_spatraster(data = bioclim_data[[1]]) +
+  geom_spatvector(data = gadm_data[gadm_data$NAME_1 %in% c("Colorado")], aes(alpha = 0.05)) +
+  geom_spatraster(data = bioclim_crop[[1]]) +
   # facet_wrap(~lyr, ncol = 2)  +
   scale_fill_whitebox_c(
     palette = "muted",
@@ -224,17 +217,36 @@ ggplot() +
     n.breaks = 12,
     guide = guide_legend(reverse = TRUE)
   ) +
-  geom_point(data = phal, aes(x= lat, y=lon))
+  geom_point(data = phal[phal$coordinateUncertaintyInMeters < 100,], aes(x= lon, y=lat)) 
 
 ```
 
 
-Count and group the points by each grid cell    
+# model the true occupancy state, and the detection probablity based on temperature and precipitation   
+AIC for full model and compare to other models   
 ```{r}
 
-## Administrative Boundary
-usa <- gadm_data
+## JAGS binomial regression 
+modelSDM_occupancy <- 
+  paste("
+        model {
+          # Likelihood:
+            for(i in 1:nSites){
+              # Biological model (occupancy)
+              z[i] ~ dbern(psi)  # z = 1 if occupied
+              
+              # Observation model
+              y[i] ~ dbin(p*z[i], n)   # dbin( probability, number of trials)
+            }
+            
+            
+        
+            }}")
 
+
+## Organize the data
+jagsData <- list(y = )
 
 ```
+
 
